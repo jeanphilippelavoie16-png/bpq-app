@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>BPQ Planification</title>
+  <!-- viewport-fit=cover : le contenu s'étend sous la barre de statut / Dynamic Island.
+       maximum-scale=1 : empêche le zoom involontaire dans une app plein écran. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+
+  <!-- ── Le correctif de la barre blanche ──
+       Cette page est le document de PREMIER NIVEAU : c'est celle-ci qu'iOS lit pour teindre
+       la barre de statut. On la déclare noire, ce que l'enveloppe Apps Script (blanche) ne
+       permettait pas. black-translucent = barre de statut transparente par-dessus notre noir. -->
+  <meta name="theme-color" content="#0a0a0a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="BPQ">
+
+  <link rel="apple-touch-icon" href="icon-180.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+  <link rel="manifest" href="manifest.webmanifest">
+
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; background: #0a0a0a; overflow: hidden; }
+    /* L'app BPQ (page Apps Script) chargée plein écran. inset:0 + viewport-fit=cover =
+       jusqu'aux bords physiques, sous la barre de statut. */
+    #app {
+      position: fixed; inset: 0; width: 100%; height: 100%; border: 0; background: #0a0a0a;
+      display: block;
+    }
+    /* Splash affiché tant que l'app n'a pas fini de charger (fondu à la fin). */
+    #splash {
+      position: fixed; inset: 0; z-index: 2; background: #0a0a0a;
+      display: flex; align-items: center; justify-content: center;
+      transition: opacity 0.45s ease; opacity: 1;
+    }
+    #splash.hidden { opacity: 0; pointer-events: none; }
+    #splash img { width: min(240px, 58vw); height: auto; }
+  </style>
+</head>
+<body>
+  <div id="splash"><img src="logo_white.png" alt="BPQ"></div>
+
+  <iframe id="app"
+          src="https://script.google.com/macros/s/AKfycbzew2PylreWUU1XAH4fYYq5yCZh29zOQ2QXzWU0yr1sZRYH0XILoC_TWjVqVQEoXMqh/exec"
+          title="BPQ Planification"
+          allow="camera; microphone; clipboard-read; clipboard-write; geolocation; fullscreen"
+          allowfullscreen></iframe>
+
+  <script>
+    // Masque le splash quand l'app est chargée (ou après un délai de sécurité).
+    (function () {
+      var splash = document.getElementById('splash');
+      var app = document.getElementById('app');
+      function hide() { splash.classList.add('hidden'); }
+      app.addEventListener('load', hide);
+      setTimeout(hide, 7000);
+    })();
+  </script>
+</body>
+</html>
