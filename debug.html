@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>BPQ — diagnostic écran</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+  <!-- Mêmes réglages plein écran que la coquille. AUCUN lien vers le manifeste : c'est ce
+       qui permet à « Sur l'écran d'accueil » de garder CETTE page comme point d'entrée
+       (le manifeste de l'app impose start_url ./index.html et écrase tout paramètre). -->
+  <meta name="theme-color" content="#0a0a0a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="BPQ debug">
+  <link rel="apple-touch-icon" href="icon-180.png">
+  <style>
+    /* VERT = fond de l'élément racine : il peint toute la surface d'affichage, même la
+       zone qu'iOS retire éventuellement du viewport de mise en page. */
+    html { background: linear-gradient(180deg, #06331f 0%, #0a5c37 100%); }
+    body { margin: 0; padding: 0; height: 100%; font: 13px/1.5 -apple-system, BlinkMacSystemFont, sans-serif; color: #fff; }
+    /* ROUGE = un position:fixed;inset:0, donc exactement le viewport de mise en page.
+       Si le cadre rouge s'arrête AVANT le bas de l'écran et qu'il reste du vert dessous,
+       c'est la preuve visuelle du décalage — et la bande noire de l'app est là. */
+    #viewport {
+      position: fixed; inset: 0; border: 3px solid #ff3b30; box-sizing: border-box;
+      display: flex; align-items: center; justify-content: center; padding: 16px;
+    }
+    #panneau {
+      background: rgba(0,0,0,0.78); border: 1px solid rgba(255,255,255,0.25);
+      border-radius: 14px; padding: 16px 18px; max-width: 340px; width: 100%;
+    }
+    h1 { font-size: 15px; margin: 0 0 10px; letter-spacing: 0.02em; }
+    table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+    td { padding: 3px 0; vertical-align: top; }
+    td:first-child { color: rgba(255,255,255,0.55); padding-right: 12px; white-space: nowrap; }
+    td:last-child { text-align: right; font-weight: 700; color: #7cc4ff; }
+    .verdict { margin-top: 12px; padding: 9px 11px; border-radius: 9px; font-weight: 700; text-align: center; }
+    .ok { background: rgba(52,199,89,0.22); border: 1px solid rgba(52,199,89,0.5); color: #6ee7a0; }
+    .ko { background: rgba(255,59,48,0.22); border: 1px solid rgba(255,59,48,0.5); color: #ff9a94; }
+    .aide { margin-top: 10px; font-size: 11px; line-height: 1.45; color: rgba(255,255,255,0.5); text-align: center; }
+    /* Sonde de zone sûre : sa hauteur vaut env(safe-area-inset-bottom), qu'on lit en JS. */
+    #sonde { position: fixed; left: -100px; bottom: 0; width: 1px; height: env(safe-area-inset-bottom, 0px); }
+  </style>
+</head>
+<body>
+  <div id="sonde"></div>
+  <div id="viewport">
+    <div id="panneau">
+      <h1>Diagnostic écran BPQ</h1>
+      <table id="mesures"></table>
+      <div id="verdict" class="verdict"></div>
+      <div class="aide">
+        Le cadre <b style="color:#ff3b30">rouge</b> est le viewport de la page.<br>
+        Le <b style="color:#6ee7a0">vert</b> est la surface d'affichage réelle.<br>
+        Du vert visible sous le rouge = la zone morte.
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      function seul() {
+        if (navigator.standalone === true) return true;
+        try { return matchMedia('(display-mode: standalone)').matches; } catch (e) { return false; }
+      }
+      function rendre() {
+        var vv = (window.visualViewport && window.visualViewport.height) || 0;
+        var ih = window.innerHeight || 0;
+        var ch = document.documentElement.clientHeight || 0;
+        var sc = window.screen || {};
+        var portrait = ih >= (window.innerWidth || 0);
+        var ecran = (sc.height && sc.width)
+          ? (portrait ? Math.max(sc.height, sc.width) : Math.min(sc.height, sc.width)) : 0;
+        var safe = Math.round(document.getElementById('sonde').getBoundingClientRect().height);
+        var manque = ecran ? ecran - ih : 0;
+
+        var rows = [
+          ['mode', seul() ? 'STANDALONE' : 'navigateur'],
+          ['window.innerHeight', ih],
+          ['visualViewport', Math.round(vv)],
+          ['clientHeight', ch],
+          ['screen (portrait)', ecran],
+          ['screen brut', (sc.height || '?') + ' × ' + (sc.width || '?')],
+          ['safe-area-bottom', safe + ' px'],
+          ['devicePixelRatio', window.devicePixelRatio || '?'],
+          ['écran − viewport', manque + ' px']
+        ];
+        document.getElementById('mesures').innerHTML =
+          rows.map(function (r) { return '<tr><td>' + r[0] + '</td><td>' + r[1] + '</td></tr>'; }).join('');
+
+        var v = document.getElementById('verdict');
+        if (manque > 4) {
+          v.className = 'verdict ko';
+          v.textContent = 'ZONE MORTE : ' + manque + ' px non couverts';
+        } else {
+          v.className = 'verdict ok';
+          v.textContent = 'Viewport = écran, aucune zone morte';
+        }
+      }
+      rendre();
+      addEventListener('resize', rendre);
+      addEventListener('orientationchange', function () { setTimeout(rendre, 250); });
+      if (window.visualViewport) window.visualViewport.addEventListener('resize', rendre);
+      setTimeout(rendre, 400);
+      setTimeout(rendre, 1500);
+    })();
+  </script>
+</body>
+</html>
