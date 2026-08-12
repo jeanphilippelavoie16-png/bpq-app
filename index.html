@@ -36,16 +36,19 @@
       width: 100vw; height: 100vh; height: 100dvh;
       border: 0; background: transparent; display: block;
     }
-    /* Filet visuel : même trame de cubes que l'app derrière l'iframe. Si un résidu de
-       bande subsiste malgré la mesure JS ci-dessous, il se fond dans le décor au lieu
-       de lire comme un aplat mort. */
-    body::before {
-      content: ''; position: fixed; inset: 0; z-index: -1; background: #0a0a0a;
+    /* Filet visuel : la trame va sur <html>, pas sur un calque en position:fixed.
+       Le fond de l'élément racine peint TOUTE la surface d'affichage, y compris la zone
+       qu'iOS peut exclure du viewport de mise en page (c'est précisément là que se formait
+       la bande noire plate). Un calque fixed, lui, s'arrête au viewport et laisse le trou. */
+    html {
+      background-color: #0a0a0a;
       background-image:
         linear-gradient(rgba(255,255,255,0.022) 1px, transparent 1px),
         linear-gradient(90deg, rgba(255,255,255,0.022) 1px, transparent 1px);
       background-size: 46px 46px;
+      background-attachment: fixed;
     }
+    body { background: transparent; }
     /* Splash affiché tant que l'app n'a pas fini de charger (fondu à la fin). */
     #splash {
       position: fixed; top: 0; left: 0; z-index: 2; background: #0a0a0a;
@@ -80,21 +83,34 @@
       // s'il reste dans les 25% de innerHeight, pour ne pas déborder si l'app tourne un
       // jour dans une fenêtre partielle (Split View iPad), où l'écran est bien plus grand
       // que la fenêtre.
+      function estStandalone() {
+        if (navigator.standalone === true) return true;                       // iOS
+        try { return matchMedia('(display-mode: standalone)').matches; } catch (e) { return false; }
+      }
+
       function fit() {
         var vv = (window.visualViewport && window.visualViewport.height) || 0;
         var ih = window.innerHeight || 0;
-        var h  = Math.max(vv, ih);
+        var h  = Math.max(vv, ih);          // hauteur RÉELLEMENT visible
         var sc = window.screen || {};
+        var seul = estStandalone();
+        var ecran = 0;
         if (sc.height && sc.width) {
           var portrait = ih >= (window.innerWidth || 0);
-          var ecran = portrait ? Math.max(sc.height, sc.width) : Math.min(sc.height, sc.width);
-          if (ih && ecran > h && ecran <= ih * 1.25) h = ecran;
+          ecran = portrait ? Math.max(sc.height, sc.width) : Math.min(sc.height, sc.width);
         }
+        // Le repli sur screen.height ne vaut QUE hors navigateur. Dans Safari, la barre
+        // d'adresse occupe légitimement le bas (874 d'écran pour 714 de viewport) : forcer
+        // l'écran y pousserait le bas de l'app — barre d'onglets comprise — sous la barre
+        // du navigateur. En standalone il n'y a plus de barre : si le viewport reste court,
+        // c'est iOS qui retient la zone sûre, et là screen.height est la bonne mesure.
+        if (seul && ecran > h && ih && ecran <= ih * 1.4) h = ecran;
         if (!h) return;
         app.style.height = h + 'px';
         splash.style.height = h + 'px';
         if (diag) {
-          diag.textContent = 'inner ' + ih + ' · visual ' + Math.round(vv)
+          diag.textContent = (seul ? 'STANDALONE' : 'navigateur')
+            + ' · inner ' + ih + ' · visual ' + Math.round(vv)
             + ' · screen ' + (sc.height || '?') + '×' + (sc.width || '?')
             + ' · dpr ' + (window.devicePixelRatio || '?') + ' → iframe ' + Math.round(h);
         }
