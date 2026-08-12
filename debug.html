@@ -16,8 +16,21 @@
   <style>
     /* VERT = fond de l'élément racine : il peint toute la surface d'affichage, même la
        zone qu'iOS retire éventuellement du viewport de mise en page. */
-    html { background: linear-gradient(180deg, #06331f 0%, #0a5c37 100%); }
+    /* height:100% est indispensable : sans boîte, le dégradé de la racine n'a aucune
+       surface à peindre et le canevas reste blanc (c'était le défaut de la 1re version). */
+    html { height: 100%; background: linear-gradient(180deg, #06331f 0%, #14b866 100%); }
     body { margin: 0; padding: 0; height: 100%; font: 13px/1.5 -apple-system, BlinkMacSystemFont, sans-serif; color: #fff; }
+    /* MAGENTA = position:fixed;bottom:0 → le bord bas du viewport de mise en page.
+       S'il ne touche pas le bas physique de l'écran, l'écart est la zone morte, et ce
+       qu'on voit dessous (vert = canevas, ou noir = rien) dit si on peut la peindre. */
+    #bas {
+      position: fixed; left: 0; right: 0; bottom: 0; height: 10px;
+      background: #ff2d95; z-index: 5;
+    }
+    #basTexte {
+      position: fixed; left: 0; right: 0; bottom: 12px; z-index: 5;
+      text-align: center; font-size: 10px; font-weight: 700; color: #ff2d95;
+    }
     /* ROUGE = un position:fixed;inset:0, donc exactement le viewport de mise en page.
        Si le cadre rouge s'arrête AVANT le bas de l'écran et qu'il reste du vert dessous,
        c'est la preuve visuelle du décalage — et la bande noire de l'app est là. */
@@ -44,15 +57,17 @@
 </head>
 <body>
   <div id="sonde"></div>
+  <div id="bas"></div>
+  <div id="basTexte">▼ bas du viewport ▼</div>
   <div id="viewport">
     <div id="panneau">
       <h1>Diagnostic écran BPQ</h1>
       <table id="mesures"></table>
       <div id="verdict" class="verdict"></div>
       <div class="aide">
-        Le cadre <b style="color:#ff3b30">rouge</b> est le viewport de la page.<br>
-        Le <b style="color:#6ee7a0">vert</b> est la surface d'affichage réelle.<br>
-        Du vert visible sous le rouge = la zone morte.
+        La barre <b style="color:#ff2d95">magenta</b> est le bas du viewport.<br>
+        Le <b style="color:#14b866">vert</b> est le fond de la racine.<br>
+        Vert sous le magenta = peignable. Noir = hors d'atteinte.
       </div>
     </div>
   </div>
