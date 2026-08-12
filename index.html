@@ -24,37 +24,31 @@
   <link rel="manifest" href="manifest.webmanifest">
 
   <style>
-    html, body { margin: 0; padding: 0; height: 100vh; height: 100dvh; background: #0a0a0a; overflow: hidden; }
-    /* ── La bande morte en bas de l'écran ──
-       height:100% se résolvait sur la zone SÛRE en mode standalone iOS : l'iframe
-       s'arrêtait au-dessus de l'indicateur d'accueil et laissait une bande noire
-       inerte de ~60px en bas, hors du document de l'app (donc ni cliquable, ni
-       défilable, sans la texture de fond). 100vh/100dvh, eux, comptent bien
-       jusqu'au bord physique avec viewport-fit=cover.
-       100dvh est déclaré après 100vh : les navigateurs qui ne le connaissent pas
-       gardent 100vh, les autres suivent en plus les changements de barre. */
-    #app {
-      position: fixed; top: 0; left: 0;
-      width: 100vw; height: 100vh; height: 100dvh;
-      border: 0; background: transparent; display: block;
-    }
-    /* Filet visuel : la trame va sur <html>, pas sur un calque en position:fixed.
-       Le fond de l'élément racine peint TOUTE la surface d'affichage, y compris la zone
-       qu'iOS peut exclure du viewport de mise en page (c'est précisément là que se formait
-       la bande noire plate). Un calque fixed, lui, s'arrête au viewport et laisse le trou. */
+    /* ══ LA BANDE MORTE EN BAS : la cause était `position: fixed` ══
+       Mesuré sur l'appareil. Avec l'iframe en position:fixed, iOS standalone donnait
+       innerHeight = 812 pour un écran de 874 : un élément fixed est borné au viewport
+       de MISE EN PAGE, qui exclut 62px (la hauteur de la Dynamic Island), et rien —
+       ni 100vh, ni 100dvh, ni le fond de la racine — n'atteignait cette zone.
+       En position:absolute avec une hauteur explicite de screen.height, le document
+       dépasse le viewport de mise en page ; iOS étend alors le viewport VISUEL à tout
+       l'écran (innerHeight passe à 874, écart 0) et le contenu descend jusqu'au bord.
+       Donc : pas de `overflow: hidden` ici (il rognerait ces 62px) et surtout pas de
+       retour à position:fixed. */
+    html, body { margin: 0; padding: 0; }
     html {
       background-color: #0a0a0a;
-      background-image:
-        linear-gradient(rgba(255,255,255,0.022) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(255,255,255,0.022) 1px, transparent 1px);
-      background-size: 46px 46px;
-      background-attachment: fixed;
+      overscroll-behavior: none;   /* pas de rebond sur les 62px de débord */
     }
-    body { background: transparent; }
+    body { background: transparent; overscroll-behavior: none; }
+    #app {
+      position: absolute; top: 0; left: 0;
+      width: 100%;                 /* hauteur posée en px par fit() */
+      border: 0; background: transparent; display: block;
+    }
     /* Splash affiché tant que l'app n'a pas fini de charger (fondu à la fin). */
     #splash {
-      position: fixed; top: 0; left: 0; z-index: 2; background: #0a0a0a;
-      width: 100vw; height: 100vh; height: 100dvh;
+      position: absolute; top: 0; left: 0; z-index: 2; background: #0a0a0a;
+      width: 100%;
       display: flex; align-items: center; justify-content: center;
       transition: opacity 0.45s ease; opacity: 1;
     }
@@ -87,7 +81,6 @@
       function fit() {
         var vv = (window.visualViewport && window.visualViewport.height) || 0;
         var ih = window.innerHeight || 0;
-        var h  = Math.max(vv, ih);          // hauteur RÉELLEMENT visible
         var sc = window.screen || {};
         var seul = estStandalone();
         var ecran = 0;
@@ -95,14 +88,11 @@
           var portrait = ih >= (window.innerWidth || 0);
           ecran = portrait ? Math.max(sc.height, sc.width) : Math.min(sc.height, sc.width);
         }
-        // ── Ne JAMAIS dépasser le viewport ──
-        // Mesuré sur l'appareil : en standalone, viewport 812 pour un écran de 874. Les
-        // 62px manquants (= la hauteur de la Dynamic Island) ne sont PAS peignables : la
-        // page de diagnostic y affiche le blanc de base du canevas, ni le dégradé de la
-        // racine ni un calque fixed ne l'atteignent. Y étirer l'iframe ne remplissait donc
-        // rien — ça poussait juste le bas de l'app, barre d'onglets comprise, hors du
-        // rendu (d'où la barre coupée en deux). La seule chose contrôlable dans cette
-        // bande est la couleur de fond de base, posée sur <html> ci-dessus.
+        // En standalone, l'iframe doit faire la hauteur de l'ÉCRAN : c'est ce débord au-delà
+        // du viewport de mise en page qui fait étendre le viewport visuel à tout l'écran.
+        // Dans un navigateur, au contraire, la barre d'adresse occupe légitimement le bas :
+        // on s'en tient à la hauteur visible, sinon le bas de l'app passe dessous.
+        var h = seul ? Math.max(vv, ih, ecran) : Math.max(vv, ih);
         if (!h) return;
         app.style.height = h + 'px';
         splash.style.height = h + 'px';
