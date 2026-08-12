@@ -16,9 +16,23 @@
   <style>
     /* VERT = fond de l'élément racine : il peint toute la surface d'affichage, même la
        zone qu'iOS retire éventuellement du viewport de mise en page. */
-    /* height:100% est indispensable : sans boîte, le dégradé de la racine n'a aucune
-       surface à peindre et le canevas reste blanc (c'était le défaut de la 1re version). */
-    html { height: 100%; background: linear-gradient(180deg, #06331f 0%, #14b866 100%); }
+    /* Le blanc observé sous la barre magenta était la couleur de BASE du canevas : la zone
+       est donc bel et bien peinte, c'est juste l'image de fond qui s'arrête à la boîte de
+       la racine. On met donc ici une couleur de base VIOLETTE, distincte du dégradé vert :
+       si le violet apparaît sous le magenta, la zone est atteignable en couleur. */
+    html { height: 100%; background-color: #7b2ff7;
+           background-image: linear-gradient(180deg, #06331f 0%, #14b866 100%); }
+    /* CYAN = un bloc en position:absolute, haut de screen.height, placé derrière tout le
+       reste. C'est LE test : si le cyan descend jusqu'au bas physique de l'écran, alors du
+       CONTENU peut être placé dans la bande — et la barre d'onglets de l'app aussi. */
+    #sonde-absolue {
+      position: absolute; top: 0; left: 0; right: 0; z-index: 0;
+      background: repeating-linear-gradient(45deg, #00d4ff 0 14px, #0090b8 14px 28px);
+    }
+    #sonde-absolue span {
+      position: absolute; left: 0; right: 0; bottom: 4px; text-align: center;
+      font-size: 11px; font-weight: 800; color: #04222b;
+    }
     body { margin: 0; padding: 0; height: 100%; font: 13px/1.5 -apple-system, BlinkMacSystemFont, sans-serif; color: #fff; }
     /* MAGENTA = position:fixed;bottom:0 → le bord bas du viewport de mise en page.
        S'il ne touche pas le bas physique de l'écran, l'écart est la zone morte, et ce
@@ -57,6 +71,7 @@
 </head>
 <body>
   <div id="sonde"></div>
+  <div id="sonde-absolue"><span>▼ bas d'un position:absolute de screen.height ▼</span></div>
   <div id="bas"></div>
   <div id="basTexte">▼ bas du viewport ▼</div>
   <div id="viewport">
@@ -65,9 +80,9 @@
       <table id="mesures"></table>
       <div id="verdict" class="verdict"></div>
       <div class="aide">
-        La barre <b style="color:#ff2d95">magenta</b> est le bas du viewport.<br>
-        Le <b style="color:#14b866">vert</b> est le fond de la racine.<br>
-        Vert sous le magenta = peignable. Noir = hors d'atteinte.
+        <b style="color:#ff2d95">Magenta</b> = bas du viewport.<br>
+        <b style="color:#00d4ff">Cyan</b> = bloc en absolu, haut comme l'écran.<br>
+        Si le cyan touche le bas de l'écran, c'est gagné.
       </div>
     </div>
   </div>
@@ -88,6 +103,11 @@
           ? (portrait ? Math.max(sc.height, sc.width) : Math.min(sc.height, sc.width)) : 0;
         var safe = Math.round(document.getElementById('sonde').getBoundingClientRect().height);
         var manque = ecran ? ecran - ih : 0;
+
+        // Le bloc cyan prend la hauteur de l'ÉCRAN, pas celle du viewport : s'il se peint
+        // jusqu'en bas, la bande est atteignable par du contenu positionné en absolu.
+        var abs = document.getElementById('sonde-absolue');
+        if (abs && ecran) abs.style.height = ecran + 'px';
 
         var rows = [
           ['mode', seul() ? 'STANDALONE' : 'navigateur'],
