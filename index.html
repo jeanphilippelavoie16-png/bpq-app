@@ -5,7 +5,9 @@
   <title>BPQ Planification</title>
   <!-- viewport-fit=cover : le contenu s'étend sous la barre de statut / Dynamic Island.
        maximum-scale=1 : empêche le zoom involontaire dans une app plein écran. -->
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+  <!-- maximum-scale/user-scalable retirés : ils bloquaient le zoom (problème d'accessibilité)
+       sans rien apporter en standalone, et sont soupçonnés de perturber viewport-fit=cover. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 
   <!-- ── Le correctif de la barre blanche ──
        Cette page est le document de PREMIER NIVEAU : c'est celle-ci qu'iOS lit pour teindre
@@ -75,14 +77,8 @@
       var app = document.getElementById('app');
 
       // ── Hauteur de l'iframe mesurée, pas déduite du CSS ──
-      // 100vh, 100dvh, visualViewport et innerHeight se sont TOUS révélés courts en
-      // standalone iOS : l'iframe s'arrêtait au-dessus de l'indicateur d'accueil et le
-      // contenu était coupé net, avec une bande noire inerte en dessous.
-      // On prend donc le MAXIMUM des mesures disponibles, screen.height compris — c'est la
-      // seule qui ne dépende pas du viewport. Garde-fou : screen.height n'est retenu que
-      // s'il reste dans les 25% de innerHeight, pour ne pas déborder si l'app tourne un
-      // jour dans une fenêtre partielle (Split View iPad), où l'écran est bien plus grand
-      // que la fenêtre.
+      // 100vh/100dvh se comportaient mal selon le mode ; on mesure donc la hauteur
+      // réellement visible et on la pose en pixels, re-mesurée au resize et à la rotation.
       function estStandalone() {
         if (navigator.standalone === true) return true;                       // iOS
         try { return matchMedia('(display-mode: standalone)').matches; } catch (e) { return false; }
@@ -99,12 +95,14 @@
           var portrait = ih >= (window.innerWidth || 0);
           ecran = portrait ? Math.max(sc.height, sc.width) : Math.min(sc.height, sc.width);
         }
-        // Le repli sur screen.height ne vaut QUE hors navigateur. Dans Safari, la barre
-        // d'adresse occupe légitimement le bas (874 d'écran pour 714 de viewport) : forcer
-        // l'écran y pousserait le bas de l'app — barre d'onglets comprise — sous la barre
-        // du navigateur. En standalone il n'y a plus de barre : si le viewport reste court,
-        // c'est iOS qui retient la zone sûre, et là screen.height est la bonne mesure.
-        if (seul && ecran > h && ih && ecran <= ih * 1.4) h = ecran;
+        // ── Ne JAMAIS dépasser le viewport ──
+        // Mesuré sur l'appareil : en standalone, viewport 812 pour un écran de 874. Les
+        // 62px manquants (= la hauteur de la Dynamic Island) ne sont PAS peignables : la
+        // page de diagnostic y affiche le blanc de base du canevas, ni le dégradé de la
+        // racine ni un calque fixed ne l'atteignent. Y étirer l'iframe ne remplissait donc
+        // rien — ça poussait juste le bas de l'app, barre d'onglets comprise, hors du
+        // rendu (d'où la barre coupée en deux). La seule chose contrôlable dans cette
+        // bande est la couleur de fond de base, posée sur <html> ci-dessus.
         if (!h) return;
         app.style.height = h + 'px';
         splash.style.height = h + 'px';
