@@ -34,7 +34,17 @@
     #app {
       position: fixed; top: 0; left: 0;
       width: 100vw; height: 100vh; height: 100dvh;
-      border: 0; background: #0a0a0a; display: block;
+      border: 0; background: transparent; display: block;
+    }
+    /* Filet visuel : même trame de cubes que l'app derrière l'iframe. Si un résidu de
+       bande subsiste malgré la mesure JS ci-dessous, il se fond dans le décor au lieu
+       de lire comme un aplat mort. */
+    body::before {
+      content: ''; position: fixed; inset: 0; z-index: -1; background: #0a0a0a;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.022) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.022) 1px, transparent 1px);
+      background-size: 46px 46px;
     }
     /* Splash affiché tant que l'app n'a pas fini de charger (fondu à la fin). */
     #splash {
@@ -57,10 +67,30 @@
           allowfullscreen></iframe>
 
   <script>
-    // Masque le splash quand l'app est chargée (ou après un délai de sécurité).
     (function () {
       var splash = document.getElementById('splash');
       var app = document.getElementById('app');
+
+      // ── Hauteur de l'iframe mesurée, pas déduite du CSS ──
+      // 100vh/100dvh se sont révélés insuffisants en standalone iOS : l'iframe s'arrêtait
+      // au-dessus de l'indicateur d'accueil et laissait une bande noire inerte. On mesure
+      // donc la hauteur réellement visible et on la pose en pixels. visualViewport est la
+      // source la plus fiable ; innerHeight sert de repli.
+      function fit() {
+        var h = (window.visualViewport && window.visualViewport.height) || window.innerHeight;
+        if (!h) return;
+        app.style.height = h + 'px';
+        splash.style.height = h + 'px';
+      }
+      fit();
+      addEventListener('resize', fit);
+      addEventListener('orientationchange', function () { setTimeout(fit, 250); });
+      if (window.visualViewport) window.visualViewport.addEventListener('resize', fit);
+      // Le passage en plein écran standalone peut arriver après le premier paint.
+      setTimeout(fit, 300);
+      setTimeout(fit, 1200);
+
+      // Masque le splash quand l'app est chargée (ou après un délai de sécurité).
       function hide() { splash.classList.add('hidden'); }
       app.addEventListener('load', hide);
       setTimeout(hide, 7000);
