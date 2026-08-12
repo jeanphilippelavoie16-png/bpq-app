@@ -72,15 +72,42 @@
       var app = document.getElementById('app');
 
       // ── Hauteur de l'iframe mesurée, pas déduite du CSS ──
-      // 100vh/100dvh se sont révélés insuffisants en standalone iOS : l'iframe s'arrêtait
-      // au-dessus de l'indicateur d'accueil et laissait une bande noire inerte. On mesure
-      // donc la hauteur réellement visible et on la pose en pixels. visualViewport est la
-      // source la plus fiable ; innerHeight sert de repli.
+      // 100vh, 100dvh, visualViewport et innerHeight se sont TOUS révélés courts en
+      // standalone iOS : l'iframe s'arrêtait au-dessus de l'indicateur d'accueil et le
+      // contenu était coupé net, avec une bande noire inerte en dessous.
+      // On prend donc le MAXIMUM des mesures disponibles, screen.height compris — c'est la
+      // seule qui ne dépende pas du viewport. Garde-fou : screen.height n'est retenu que
+      // s'il reste dans les 25% de innerHeight, pour ne pas déborder si l'app tourne un
+      // jour dans une fenêtre partielle (Split View iPad), où l'écran est bien plus grand
+      // que la fenêtre.
       function fit() {
-        var h = (window.visualViewport && window.visualViewport.height) || window.innerHeight;
+        var vv = (window.visualViewport && window.visualViewport.height) || 0;
+        var ih = window.innerHeight || 0;
+        var h  = Math.max(vv, ih);
+        var sc = window.screen || {};
+        if (sc.height && sc.width) {
+          var portrait = ih >= (window.innerWidth || 0);
+          var ecran = portrait ? Math.max(sc.height, sc.width) : Math.min(sc.height, sc.width);
+          if (ih && ecran > h && ecran <= ih * 1.25) h = ecran;
+        }
         if (!h) return;
         app.style.height = h + 'px';
         splash.style.height = h + 'px';
+        if (diag) {
+          diag.textContent = 'inner ' + ih + ' · visual ' + Math.round(vv)
+            + ' · screen ' + (sc.height || '?') + '×' + (sc.width || '?')
+            + ' · dpr ' + (window.devicePixelRatio || '?') + ' → iframe ' + Math.round(h);
+        }
+      }
+      // Lecture des mesures à l'écran, seulement avec ?debug=1 — pour diagnostiquer sur
+      // l'appareil sans avoir à le brancher.
+      var diag = null;
+      if (/[?&]debug=1/.test(location.search)) {
+        diag = document.createElement('div');
+        diag.style.cssText = 'position:fixed;left:8px;right:8px;bottom:8px;z-index:99;'
+          + 'font:11px/1.4 -apple-system,sans-serif;color:#7cc4ff;background:rgba(0,0,0,0.8);'
+          + 'border:1px solid rgba(124,196,255,0.4);border-radius:8px;padding:6px 8px;text-align:center';
+        document.body.appendChild(diag);
       }
       fit();
       addEventListener('resize', fit);
