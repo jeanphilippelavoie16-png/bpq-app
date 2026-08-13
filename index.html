@@ -125,6 +125,28 @@
       function hide() { splash.classList.add('hidden'); }
       app.addEventListener('load', hide);
       setTimeout(hide, 7000);
+
+      // ── Rechargement demandé par l'app (écran noir au réveil) ──
+      // L'app tourne dans l'iframe bac à sable d'Apps Script (`userCodeAppPanel`), dont l'URL
+      // est signée et à usage unique : un location.reload() DEPUIS L'INTÉRIEUR retombe souvent
+      // sur un cadre vide — l'écran noir dont on ne sortait qu'en redémarrant le téléphone.
+      // C'est la coquille qui doit recharger, avec l'URL /exec, elle stable. L'app envoie donc
+      // { bpq: 'reload' } (voir _bpqReload_ dans Assignation.html) et on la sert ici.
+      //
+      // Le message vient du bac à sable INTERNE (googleusercontent.com), pas de l'iframe
+      // directe : on ne peut donc pas comparer e.source à app.contentWindow, il faut filtrer
+      // sur l'origine. La seule action possible reste de recharger notre propre iframe sur son
+      // URL d'origine — aucune donnée n'est lue ni transmise.
+      function origineGoogle(o) {
+        return o === 'https://script.google.com'
+          || /^https:\/\/[a-z0-9-]+\.googleusercontent\.com$/.test(o);
+      }
+      addEventListener('message', function (e) {
+        if (!origineGoogle(e.origin)) return;
+        if (!e.data || e.data.bpq !== 'reload') return;
+        splash.classList.remove('hidden');
+        app.src = app.src; // relance un chargement complet sur l'URL /exec
+      });
     })();
   </script>
 </body>
