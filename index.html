@@ -141,11 +141,43 @@
         return o === 'https://script.google.com'
           || /^https:\/\/[a-z0-9-]+\.googleusercontent\.com$/.test(o);
       }
+      // ── Jeton du poste kiosque (la tablette du chariot élévateur) ──
+      // Le stockage de l'app vit dans le bac à sable Apps Script : origine TIERCE, et
+      // regénérée à chaque chargement de /exec. Un jeton écrit là ne survit pas au
+      // rechargement, et Safari sur iPad refuse même de l'écrire (« Empêcher le suivi entre
+      // sites », actif par défaut). C'est ce qui rendait l'installation impossible : la
+      // tablette acceptait le code puis revenait à l'écran de connexion.
+      // Cette page-ci est le document de premier niveau : son origine ne bouge pas et son
+      // stockage est de première partie. Le jeton doit donc vivre ICI. On ne garde qu'une
+      // chaîne opaque (aucune donnée lisible), et on ne répond qu'à l'origine Google d'où
+      // vient la demande.
+      var KIOSK_KEY = 'bpqKioskToken';
+      function kioskGet() { try { return localStorage.getItem(KIOSK_KEY) || ''; } catch (e) { return ''; } }
+
       addEventListener('message', function (e) {
         if (!origineGoogle(e.origin)) return;
-        if (!e.data || e.data.bpq !== 'reload') return;
-        splash.classList.remove('hidden');
-        app.src = app.src; // relance un chargement complet sur l'URL /exec
+        if (!e.data) return;
+
+        if (e.data.bpq === 'reload') {
+          splash.classList.remove('hidden');
+          app.src = app.src; // relance un chargement complet sur l'URL /exec
+          return;
+        }
+        if (e.data.bpq === 'kiosk-set') {
+          if (typeof e.data.token === 'string' && e.data.token) {
+            try { localStorage.setItem(KIOSK_KEY, e.data.token); } catch (err) {}
+          }
+          return;
+        }
+        if (e.data.bpq === 'kiosk-clear') {
+          try { localStorage.removeItem(KIOSK_KEY); } catch (err) {}
+          return;
+        }
+        if (e.data.bpq === 'kiosk-get') {
+          // Réponse à la fenêtre qui a demandé, sur SON origine — jamais en diffusion.
+          try { e.source.postMessage({ bpq: 'kiosk-token', token: kioskGet() }, e.origin); } catch (err) {}
+          return;
+        }
       });
     })();
   </script>
