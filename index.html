@@ -59,8 +59,31 @@
 <body>
   <div id="splash"><img src="logo_white.png" alt="BPQ"></div>
 
+  <!-- ── QUEL PROJET APPS SCRIPT CETTE COQUILLE SERT ──
+       Repointé le 2026-08-21. Cette ligne visait encore AKfycbzew2Pylre…QEoXMqh, le
+       déploiement de l'ANCIEN projet, déclaré obsolète à la bascule du 2026-08-20.
+       La coquille servait donc l'app au bandeau rouge — alors les gens ouvraient la
+       nouvelle URL /exec directement dans Safari, et tout ce que cette page apporte
+       disparaissait d'un coup. Voir demande explicite : « depuis qu'on a switcher à la
+       nouvelle app web, la barre blanche est revenu quand j'enregistre comme une app
+       dans mon écran d'iPhone et sur la tablette je ne suis plus capable de mettre
+       l'app sur le bureau avec le logo et il garde la barre web en tête ».
+
+       Pourquoi l'URL /exec nue ne peut PAS remplacer cette page : là-bas le document
+       de premier niveau est l'enveloppe générée par Google, et HtmlService.addMetaTag()
+       n'accepte que « viewport » (voir la NOTE dans doGet, Code.js de bpq-planification).
+       Donc pas d'apple-touch-icon (iOS met une capture d'écran à la place du logo), pas
+       de display standalone (l'icône rouvre le navigateur avec sa barre), pas de
+       theme-color (la barre blanche). Les trois symptômes n'en font qu'un : on
+       n'installait plus la coquille.
+
+       L'ID ci-dessous est le déploiement EN SERVICE (app.bpq.ca). Il est apparié au
+       projet dans bpq-planification/hooks/clasp-cible.ps1 et dans son CLAUDE.md
+       § « IL Y A DEUX PROJETS ». Changer de déploiement là-bas sans changer cette
+       ligne ici ramène exactement la panne du 2026-08-21 — et rien ne le signalera :
+       ce dépôt n'a ni clasp, ni pre-push, ni aucun des 10 contrôles. -->
   <iframe id="app"
-          src="https://script.google.com/macros/s/AKfycbzew2PylreWUU1XAH4fYYq5yCZh29zOQ2QXzWU0yr1sZRYH0XILoC_TWjVqVQEoXMqh/exec"
+          src="https://script.google.com/macros/s/AKfycbxOsJhObowJjHXim2cFl4JN6Uzq2eFrj7B0AZmrxhCwr8FtVIS9ur9y9JT1XPqdPdEh/exec"
           title="BPQ Planification"
           allow="camera; microphone; clipboard-read; clipboard-write; geolocation; fullscreen"
           allowfullscreen></iframe>
