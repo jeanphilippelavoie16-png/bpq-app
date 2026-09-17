@@ -174,8 +174,22 @@
       // stockage est de première partie. Le jeton doit donc vivre ICI. On ne garde qu'une
       // chaîne opaque (aucune donnée lisible), et on ne répond qu'à l'origine Google d'où
       // vient la demande.
+      //
+      // ── ET LE POSTE AVEC LUI (2026-09-17) ──
+      // Signalé par l'utilisateur : « quand on ferme et rouvre l'app sur la tablette […] ça
+      // revient automatiquement au kiosque manutention ». Le jeton dit « cette tablette est un
+      // kiosque » ; il ne dit pas LEQUEL. Le poste était resté rangé dans le stockage de
+      // l'iframe — celui qui ne survit pas — alors chaque démarrage retombait sur le premier
+      // poste de la liste. Et le serveur ne peut pas s'en charger : le jeton est le MÊME sur
+      // toutes les tablettes (il dérive du code d'usine), il n'identifie aucun appareil.
+      // C'est donc ici, à côté du jeton, et pour la même raison que lui.
+      //
+      // Les deux clés sont INDÉPENDANTES : l'app renvoie parfois le jeton seul (elle le
+      // repersiste à chaque entrée), et ça ne doit pas effacer le poste.
       var KIOSK_KEY = 'bpqKioskToken';
+      var KIOSK_PAGE_KEY = 'bpqKioskPage';
       function kioskGet() { try { return localStorage.getItem(KIOSK_KEY) || ''; } catch (e) { return ''; } }
+      function kioskPageGet() { try { return localStorage.getItem(KIOSK_PAGE_KEY) || ''; } catch (e) { return ''; } }
 
       addEventListener('message', function (e) {
         if (!origineGoogle(e.origin)) return;
@@ -190,15 +204,24 @@
           if (typeof e.data.token === 'string' && e.data.token) {
             try { localStorage.setItem(KIOSK_KEY, e.data.token); } catch (err) {}
           }
+          // Garde SÉPARÉE, volontairement : un envoi sans poste ne doit pas l'effacer.
+          if (typeof e.data.page === 'string' && e.data.page) {
+            try { localStorage.setItem(KIOSK_PAGE_KEY, e.data.page); } catch (err) {}
+          }
           return;
         }
         if (e.data.bpq === 'kiosk-clear') {
           try { localStorage.removeItem(KIOSK_KEY); } catch (err) {}
+          try { localStorage.removeItem(KIOSK_PAGE_KEY); } catch (err) {}
           return;
         }
         if (e.data.bpq === 'kiosk-get') {
           // Réponse à la fenêtre qui a demandé, sur SON origine — jamais en diffusion.
-          try { e.source.postMessage({ bpq: 'kiosk-token', token: kioskGet() }, e.origin); } catch (err) {}
+          // `page` s'ajoute sans rien casser dans un sens ni dans l'autre : une app d'avant ce
+          // lot ignore le champ, et une app d'après retombe sur son ancien comportement quand
+          // une coquille d'avant ne l'envoie pas. Les deux dépôts se mettent donc à jour
+          // chacun de son côté, ce qui compte ici : la coquille se déploie à la main.
+          try { e.source.postMessage({ bpq: 'kiosk-token', token: kioskGet(), page: kioskPageGet() }, e.origin); } catch (err) {}
           return;
         }
       });
