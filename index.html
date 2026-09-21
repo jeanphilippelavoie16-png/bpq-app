@@ -17,7 +17,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="BPQ">
+  <meta name="apple-mobile-web-app-title" content="BPQ" id="titreIcone">
 
   <link rel="apple-touch-icon" href="icon-180.png">
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
@@ -92,6 +92,97 @@
     (function () {
       var splash = document.getElementById('splash');
       var app = document.getElementById('app');
+
+      // ══════════════════════════════════════════════════════════════════════════════
+      // ⛔ CHAQUE KIOSQUE A SON ADRESSE — `?poste=<id>` (2026-09-21)
+      // ══════════════════════════════════════════════════════════════════════════════
+      //
+      // Demande : « je veux que chaque kiosque s'installe manuellement chacun, pas "installer
+      // en mode kiosque" — ça règle beaucoup de problèmes de relogin et tout. Comme ça chaque
+      // kiosque est autonome. »
+      //
+      // CE QUI NE MARCHAIT PAS, ET C'EST CETTE PAGE-CI QUI MANQUAIT. Depuis le 2026-09-17,
+      // l'app envoie le POSTE avec le jeton (`kiosk-set` porte un champ `page`) et le
+      // redemande au démarrage. Cette coquille est restée au commit du 2026-08-21 : elle
+      // ignorait `page` et n'en renvoyait aucun. L'app recevait donc toujours une page vide,
+      // retombait sur le localStorage de l'iframe — mort sur iPad — puis sur le premier poste
+      // de sa table. TOUTES les tablettes repartaient sur Manutention à chaque redémarrage,
+      // quel que soit le poste installé. Rien ne le signalait : la tablette avait simplement
+      // l'air installée sur autre chose.
+      //
+      // DEUX CORRECTIONS, ET L'ORDRE EST VOULU :
+      //   1. L'ADRESSE. On ouvre `…/bpq-app/?poste=batching` et on l'ajoute à l'écran
+      //      d'accueil : iOS retient l'URL COURANTE comme point de départ de l'icône. Le
+      //      poste vit alors dans le document de PREMIER NIVEAU, qui traverse un
+      //      redémarrage, une coupure de courant et un nettoyage de Safari. C'est ce qui rend
+      //      chaque kiosque autonome — il n'y a plus rien à perdre.
+      //   2. Le rangement (plus bas), pour les tablettes déjà installées sans adresse :
+      //      personne ne va toutes les refaire le jour de la livraison.
+      //
+      // ⚠ LE POSTE N'OUVRE AUCUNE PORTE. Il dit ce que la tablette AFFICHE ; c'est le jeton,
+      // vérifié côté serveur, qui décide de ce qu'elle a le droit de faire. Une adresse
+      // fabriquée à la main ne donne donc rien de plus qu'une adresse.
+      //
+      // ⚠ LA LISTE DES NOMS CI-DESSOUS NE SERT QU'À NOMMER L'ICÔNE. La table qui fait
+      // autorité est `KIOSK_POSTES` (bpq-planification, ui/Js-01) : c'est l'app qui valide
+      // l'id et qui décide du poste. Un id absent d'ici ne casse rien — l'icône s'appelle
+      // « BPQ », et l'app ouvre quand même le bon poste.
+      var POSTE_NOMS = {
+        manutention: 'Manutention', production: 'Production', ferrailleur: 'Ferraillage',
+        inspection: 'Inspection', punch: 'Punch', cnckiosque: 'CNC',
+        usine: 'Batching', calendrier: 'Superviseur'
+      };
+      function posteDeLAdresse() {
+        try {
+          var m = /[?&]poste=([A-Za-z0-9_-]+)/.exec(location.search || '');
+          return m ? m[1].toLowerCase() : '';
+        } catch (e) { return ''; }
+      }
+      var POSTE = posteDeLAdresse();
+
+      if (POSTE) {
+        // ── L'APP REÇOIT LE POSTE DANS SON URL ──
+        // ⚠ ON RÉÉCRIT `src`, ON NE LE REMPLACE PAS DANS LE HTML. L'attribut `src` du
+        // document porte l'ID du déploiement en clair, et c'est LUI que le contrôle de
+        // CLAUDE.md relit (`grep -o 'src="[^"]*AKfycb[^"]*"'`) pour vérifier que la coquille
+        // sert le bon projet. Le déplacer dans un attribut à nous rendrait ce contrôle muet —
+        // il répondrait « rien », ce qui se lit comme « coquille périmée ».
+        // Le coût est une requête abandonnée quand un poste est nommé. Elle n'est pas perdue :
+        // elle réveille l'instance Apps Script, dont le démarrage à froid est de 8 à 9 s.
+        try {
+          var base = app.getAttribute('src') || '';
+          app.src = base + (base.indexOf('?') >= 0 ? '&' : '?') + 'kiosque=' + encodeURIComponent(POSTE);
+        } catch (e) {}
+
+        // ── L'ICÔNE PORTE LE NOM DU POSTE ──
+        // Huit icônes « BPQ » sur huit tablettes ne se distinguent pas, et c'est le moment où
+        // quelqu'un installe qui décide pour des mois. iOS lit cette balise AU MOMENT d'ajouter
+        // à l'écran d'accueil : la poser ici suffit, la page est déjà chargée.
+        var nom = POSTE_NOMS[POSTE] || '';
+        if (nom) {
+          try {
+            var t = document.getElementById('titreIcone');
+            if (t) t.setAttribute('content', 'BPQ ' + nom);
+            document.title = 'BPQ ' + nom;
+          } catch (e) {}
+        }
+
+        // ── ET LE MANIFESTE SUIT, POUR CHROME ──
+        // iOS n'en a pas besoin : il retient l'URL courante. Chrome, lui, repart du
+        // `start_url` du manifeste — il perdrait donc le poste à chaque ouverture de l'icône.
+        // C'est le cas de la TV du superviseur, qui s'installe depuis Chrome. On réécrit donc
+        // le manifeste en mémoire, avec le poste dedans.
+        // ⚠ ENTIÈREMENT DANS UN try : un navigateur qui refuse un manifeste `blob:` doit
+        // perdre la personnalisation de l'icône, jamais la page.
+        try {
+          fetch('manifest.webmanifest').then(function (r) { return r.json(); }).then(function (m) {
+            m.start_url = './?poste=' + encodeURIComponent(POSTE);
+            if (nom) { m.name = 'BPQ ' + nom; m.short_name = nom; }
+            var lien = document.querySelector('link[rel="manifest"]');
+            if (lien) lien.href = URL.createObjectURL(new Blob([JSON.stringify(m)], { type: 'application/manifest+json' }));
+          }).catch(function () {});
+        } catch (e) {}
+      }
 
       // ── Hauteur de l'iframe mesurée, pas déduite du CSS ──
       // 100vh/100dvh se comportaient mal selon le mode ; on mesure donc la hauteur
@@ -174,8 +265,18 @@
       // stockage est de première partie. Le jeton doit donc vivre ICI. On ne garde qu'une
       // chaîne opaque (aucune donnée lisible), et on ne répond qu'à l'origine Google d'où
       // vient la demande.
+      // ⚠ DEUX CLÉS, ET LA SECONDE MANQUAIT DEPUIS LE 2026-09-17. L'app envoie le poste avec
+      // le jeton depuis ce jour-là ; cette page l'ignorait et n'en renvoyait aucun. Voir le
+      // pavé « CHAQUE KIOSQUE A SON ADRESSE » plus haut : c'est la panne qui faisait repartir
+      // toutes les tablettes sur Manutention.
+      //
+      // Le poste n'est PAS un secret — c'est un nom d'écran, en clair, à côté du jeton qui,
+      // lui, est une chaîne opaque. Les deux gardes sont indépendantes : persister un jeton
+      // seul ne doit pas effacer le poste, et l'inverse non plus.
       var KIOSK_KEY = 'bpqKioskToken';
+      var KIOSK_PAGE_KEY = 'bpqKioskPage';
       function kioskGet() { try { return localStorage.getItem(KIOSK_KEY) || ''; } catch (e) { return ''; } }
+      function kioskPageGet() { try { return localStorage.getItem(KIOSK_PAGE_KEY) || ''; } catch (e) { return ''; } }
 
       addEventListener('message', function (e) {
         if (!origineGoogle(e.origin)) return;
@@ -190,15 +291,26 @@
           if (typeof e.data.token === 'string' && e.data.token) {
             try { localStorage.setItem(KIOSK_KEY, e.data.token); } catch (err) {}
           }
+          // Garde SÉPARÉE, et chaîne vide = « je ne dis rien du poste », pas « efface-le ».
+          // C'est ce que l'app promet de son côté (`_kioskPersist_` : « `page` vide n'efface
+          // rien »), et les deux doivent le promettre ensemble.
+          if (typeof e.data.page === 'string' && e.data.page) {
+            try { localStorage.setItem(KIOSK_PAGE_KEY, e.data.page); } catch (err) {}
+          }
           return;
         }
         if (e.data.bpq === 'kiosk-clear') {
           try { localStorage.removeItem(KIOSK_KEY); } catch (err) {}
+          try { localStorage.removeItem(KIOSK_PAGE_KEY); } catch (err) {}
           return;
         }
         if (e.data.bpq === 'kiosk-get') {
           // Réponse à la fenêtre qui a demandé, sur SON origine — jamais en diffusion.
-          try { e.source.postMessage({ bpq: 'kiosk-token', token: kioskGet() }, e.origin); } catch (err) {}
+          // ⚠ L'ADRESSE PASSE DEVANT LE RANGEMENT, et c'est l'app qui tranche (voir
+          // `_kioskEnter_`). On répond donc ce qu'on a gardé, sans regarder `?poste=` : deux
+          // endroits qui arbitrent la même question finissent par ne plus donner la même
+          // réponse, et celui qu'on lit n'est jamais celui qu'on croit.
+          try { e.source.postMessage({ bpq: 'kiosk-token', token: kioskGet(), page: kioskPageGet() }, e.origin); } catch (err) {}
           return;
         }
       });
