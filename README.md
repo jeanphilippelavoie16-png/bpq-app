@@ -47,3 +47,50 @@ curl -s https://jeanphilippelavoie16-png.github.io/bpq-app/ | grep -o 'AKfycb[A-
 
 La deuxième chaîne rendue (celle de l'attribut `src`) doit être celle du déploiement
 EN SERVICE ; la première n'est que la mention de l'ancien dans le commentaire.
+
+## L'adresse dit le poste — 2026-09-21
+
+Chaque kiosque a **son** adresse. On l'ouvre dans Safari, on l'ajoute à l'écran d'accueil
+(l'icône s'appelle « BPQ Batching », « BPQ Punch »…), on ouvre l'icône, et on tape le code
+d'usine. Le poste ne se choisit plus : l'adresse l'a déjà dit.
+
+| poste | adresse |
+|---|---|
+| Manutention | `…/bpq-app/?poste=manutention` |
+| Production | `…/bpq-app/?poste=production` |
+| Ferraillage | `…/bpq-app/?poste=ferrailleur` |
+| Inspection | `…/bpq-app/?poste=inspection` |
+| Punch | `…/bpq-app/?poste=punch` |
+| CNC | `…/bpq-app/?poste=cnckiosque` |
+| **Batching** | `…/bpq-app/?poste=usine` |
+| **Superviseur (TV)** | `…/bpq-app/?poste=calendrier` |
+
+⚠ Deux ids ne portent pas le nom qu'on dirait : Batching est `usine`, la TV est `calendrier`.
+Ce sont ceux de `KIOSK_POSTES` dans `bpq-planification` — les renommer ici ne renommerait rien
+là-bas, ça ne ferait que rendre l'adresse muette.
+
+**Pourquoi l'adresse et pas seulement un rangement.** Le poste vivait déjà dans le
+`localStorage` de cette coquille depuis le 2026-09-17 (`bpqKioskPage`) — sauf que ce dépôt-ci
+n'a jamais reçu sa moitié du lot. Il ignorait le champ que l'app lui envoyait et n'en renvoyait
+aucun : **toutes les tablettes repartaient sur Manutention à chaque redémarrage**, quel que soit
+le poste installé, et rien ne le disait. Quatre jours. L'adresse, elle, survit à un redémarrage,
+à une coupure de courant et à un nettoyage de Safari.
+
+⚠ **`start_url` du manifeste peut manger la requête** au lancement depuis l'icône. La coquille
+RETIENT donc ce que l'adresse a dit et le relit quand elle se tait. Les deux ne se remplacent
+pas : si tu retires la mémoire, vérifie d'abord sur un vrai iPad que `?poste=` survit au
+lancement — ça ne se mesure pas d'ici.
+
+## Le banc
+
+```bash
+node verifier-coquille.cjs
+```
+
+Il exécute le script de `index.html` dans un faux navigateur et refuse les **deux pannes que
+cette coquille a déjà eues** : l'iframe repointée sur l'ancien projet, et le poste qui ne
+voyage pas. Éprouvé en sabotant les deux, plus l'adresse inconnue qui retomberait sur
+Manutention.
+
+Il ne remplace pas l'essai sur un iPad : ce qui dépend de Safari — `start_url`, la hauteur du
+viewport en standalone — ne se mesure que sur l'appareil.

@@ -82,8 +82,12 @@
        § « IL Y A DEUX PROJETS ». Changer de déploiement là-bas sans changer cette
        ligne ici ramène exactement la panne du 2026-08-21 — et rien ne le signalera :
        ce dépôt n'a ni clasp, ni pre-push, ni aucun des 10 contrôles. -->
+  <!-- ⚠ PAS DE `src` ICI, ET C'EST VOULU (2026-09-21). L'adresse de /exec se compose plus bas
+       avec `?kiosque=<poste>` : la poser en dur ferait partir un PREMIER chargement sans le
+       poste, puis un second avec — deux démarrages à froid d'Apps Script (8 à 9 s chacun) à
+       chaque ouverture de tablette, et l'écran du mauvais poste entre les deux. L'ID du
+       déploiement EN SERVICE vit maintenant dans la constante EXEC du script. -->
   <iframe id="app"
-          src="https://script.google.com/macros/s/AKfycbxOsJhObowJjHXim2cFl4JN6Uzq2eFrj7B0AZmrxhCwr8FtVIS9ur9y9JT1XPqdPdEh/exec"
           title="BPQ Planification"
           allow="camera; microphone; clipboard-read; clipboard-write; geolocation; fullscreen"
           allowfullscreen></iframe>
@@ -92,6 +96,60 @@
     (function () {
       var splash = document.getElementById('splash');
       var app = document.getElementById('app');
+
+      // ═══════════════════════════════════════════════════════════════════════════════════
+      // LE POSTE DE CETTE TABLETTE — il vit dans l'ADRESSE, et on le retient
+      // ═══════════════════════════════════════════════════════════════════════════════════
+      //
+      // Demande du 2026-09-21 : « je veux que chaque kiosque s'installe manuellement chacun
+      // […] comme ça chaque kiosque est autonome ». On ouvre `…/bpq-app/?poste=usine`, on
+      // ajoute à l'écran d'accueil, et cette tablette EST Batching pour toujours.
+      //
+      // ⛔ CE QUI A RENDU CE LOT NÉCESSAIRE, et il faut le savoir pour ne pas le défaire :
+      // le poste vivait DÉJÀ dans le localStorage de cette coquille depuis le 2026-09-17
+      // (`bpqKioskPage`) — sauf que ce dépôt-ci n'a jamais reçu sa moitié du lot. Il ignorait
+      // le champ que l'app lui envoyait et n'en renvoyait aucun. Toutes les tablettes
+      // repartaient donc sur Manutention à chaque redémarrage, quel que soit le poste
+      // installé, et rien ne le disait. Quatre jours.
+      //
+      // ⚠ ET LE MANIFESTE PEUT MANGER L'ADRESSE. `start_url: "./index.html"` : au lancement
+      // depuis l'icône, iOS peut repartir de CETTE adresse-là, sans le `?poste=`. On ne parie
+      // donc pas dessus — on RETIENT ce que l'adresse a dit, et on le relit quand elle se
+      // tait. L'adresse reste prioritaire : rouvrir `?poste=punch` sur une tablette Batching
+      // la change, ce qui est le seul moyen de corriger une tablette sans la désinstaller.
+      var EXEC = 'https://script.google.com/macros/s/'
+               + 'AKfycbxOsJhObowJjHXim2cFl4JN6Uzq2eFrj7B0AZmrxhCwr8FtVIS9ur9y9JT1XPqdPdEh/exec';
+
+      // Les ids sont ceux de KIOSK_POSTES (bpq-planification, ui/Js-01). Deux ne portent pas
+      // le nom qu'on dirait : Batching est `usine`, et la TV du Superviseur est `calendrier`.
+      var POSTES = { manutention: 'Manutention', production: 'Production',
+                     ferrailleur: 'Ferraillage', inspection: 'Inspection',
+                     punch: 'Punch', cnckiosque: 'CNC',
+                     usine: 'Batching', calendrier: 'Superviseur' };
+      var PAGE_KEY = 'bpqKioskPage';
+
+      function posteLire() {
+        var v = '';
+        try { v = new URLSearchParams(location.search).get('poste') || ''; } catch (e) {}
+        v = String(v).trim().toLowerCase();
+        // ⚠ UNE ADRESSE INCONNUE NE DÉCIDE RIEN. Pas de repli sur le premier poste : ce serait
+        // rejouer la panne qu'on vient de corriger, en plus silencieux encore. L'app refuse le
+        // même repli de son côté (`_kiosqueParUrl_`).
+        if (POSTES[v]) { try { localStorage.setItem(PAGE_KEY, v); } catch (e) {} return v; }
+        try { v = String(localStorage.getItem(PAGE_KEY) || '').trim().toLowerCase(); } catch (e) { v = ''; }
+        return POSTES[v] ? v : '';
+      }
+
+      var poste = posteLire();
+      app.src = EXEC + (poste ? '?kiosque=' + encodeURIComponent(poste) : '');
+
+      // Le nom sous l'icône de l'écran d'accueil : « BPQ Batching », « BPQ Punch »… C'est la
+      // dernière occasion de voir qu'on a ouvert la mauvaise adresse avant de taper le code.
+      if (poste) {
+        document.title = 'BPQ ' + POSTES[poste];
+        var mt = document.querySelector('meta[name="apple-mobile-web-app-title"]');
+        if (mt) mt.setAttribute('content', 'BPQ ' + POSTES[poste]);
+      }
 
       // ── Hauteur de l'iframe mesurée, pas déduite du CSS ──
       // 100vh/100dvh se comportaient mal selon le mode ; on mesure donc la hauteur
@@ -176,6 +234,15 @@
       // vient la demande.
       var KIOSK_KEY = 'bpqKioskToken';
       function kioskGet() { try { return localStorage.getItem(KIOSK_KEY) || ''; } catch (e) { return ''; } }
+      // Le POSTE voyage à côté du jeton depuis le 2026-09-17, et il a fallu quatre jours pour
+      // que cette moitié-ci arrive. Le jeton dit « cette tablette est un kiosque » ; il ne dit
+      // pas LEQUEL — il est le même sur toutes les tablettes (`_manutentionKioskToken_` hache
+      // le code d'usine et un sel de projet, il n'identifie aucun appareil). Sans le poste, la
+      // tablette retombait sur le premier de la table à chaque redémarrage.
+      // C'est la même clé que celle de l'adresse plus haut : les deux chemins écrivent au même
+      // endroit, donc une tablette installée par l'adresse garde son poste même si l'app le
+      // lui renvoie, et l'inverse aussi.
+      function pageGet() { try { return localStorage.getItem(PAGE_KEY) || ''; } catch (e) { return ''; } }
 
       addEventListener('message', function (e) {
         if (!origineGoogle(e.origin)) return;
@@ -187,18 +254,31 @@
           return;
         }
         if (e.data.bpq === 'kiosk-set') {
+          // ⚠ DEUX GARDES SÉPARÉES, JAMAIS IMBRIQUÉES. L'app persiste parfois un jeton avec
+          // `page: ''` (voir `_kioskPersist_`) : imbriquer ferait perdre le poste à ce
+          // moment-là, et on ne s'en apercevrait qu'au redémarrage suivant.
           if (typeof e.data.token === 'string' && e.data.token) {
             try { localStorage.setItem(KIOSK_KEY, e.data.token); } catch (err) {}
+          }
+          if (typeof e.data.page === 'string' && e.data.page) {
+            try { localStorage.setItem(PAGE_KEY, e.data.page); } catch (err) {}
           }
           return;
         }
         if (e.data.bpq === 'kiosk-clear') {
+          // Quitter le kiosque efface TOUT : garder le poste ferait rouvrir l'écran d'un poste
+          // sur une tablette qu'on vient de libérer.
           try { localStorage.removeItem(KIOSK_KEY); } catch (err) {}
+          try { localStorage.removeItem(PAGE_KEY); } catch (err) {}
           return;
         }
         if (e.data.bpq === 'kiosk-get') {
           // Réponse à la fenêtre qui a demandé, sur SON origine — jamais en diffusion.
-          try { e.source.postMessage({ bpq: 'kiosk-token', token: kioskGet() }, e.origin); } catch (err) {}
+          // `page` s'ajoute au jeton : une app d'avant ce lot ignore le champ en trop, et
+          // celle d'aujourd'hui s'en sert quand l'adresse n'a rien dit.
+          try {
+            e.source.postMessage({ bpq: 'kiosk-token', token: kioskGet(), page: pageGet() }, e.origin);
+          } catch (err) {}
           return;
         }
       });
