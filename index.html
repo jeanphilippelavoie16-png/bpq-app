@@ -141,7 +141,26 @@
       }
 
       var poste = posteLire();
-      app.src = EXEC + (poste ? '?kiosque=' + encodeURIComponent(poste) : '');
+
+      // ── LE CODE D'USINE, QUAND L'ADRESSE LE PORTE (2026-09-22) ──
+      // Pour une fenêtre qui ne garde RIEN entre deux lancements — WebFrame Basic en Single
+      // App Mode, le seul mode que la tablette de la TV peut porter, un web clip ne pouvant
+      // pas être verrouillé par un MDM. Sans ça, le jeton du kiosque meurt à chaque
+      // fermeture et quelqu'un doit monter taper quatre chiffres chaque matin.
+      //
+      // ⚠ ON NE LE RETIENT PAS, contrairement au poste. Le poste dit ce que la tablette
+      // AFFICHE et n'ouvre rien ; le code ouvre les commandes d'écriture. Le garder ici en
+      // ferait une copie de plus à oublier quelque part — il vit dans l'adresse, et nulle
+      // part ailleurs. Une adresse sans code redevient donc une tablette ordinaire, qui
+      // demandera son code : c'est le comportement qu'on veut.
+      var code = '';
+      try { code = String(new URLSearchParams(location.search).get('code') || '').trim(); } catch (e) {}
+      if (!/^[0-9]{4}$/.test(code)) code = '';   // mal formé = rien, jamais une tentative
+
+      var q = [];
+      if (poste) q.push('kiosque=' + encodeURIComponent(poste));
+      if (code)  q.push('code=' + encodeURIComponent(code));
+      app.src = EXEC + (q.length ? '?' + q.join('&') : '');
 
       // Le nom sous l'icône de l'écran d'accueil : « BPQ Batching », « BPQ Punch »… C'est la
       // dernière occasion de voir qu'on a ouvert la mauvaise adresse avant de taper le code.

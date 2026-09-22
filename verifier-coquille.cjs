@@ -163,6 +163,29 @@ console.log('\n-- 2. Le poste voyage : c est TOUT le lot du 2026-09-21 --');
   vrai('et le rangement suit', b.range().bpqKioskPage === 'ferrailleur', JSON.stringify(b.range()));
 }
 
+console.log('\n-- 2 bis. Le code d usine, pour les fenetres qui ne gardent rien --');
+{
+  const b = bac('?poste=calendrier&code=1234');
+  vrai('le code voyage jusqu a /exec', /[?&]code=1234\b/.test(b.src()), b.src());
+  vrai('et le poste avec lui', /[?&]kiosque=calendrier\b/.test(b.src()), b.src());
+  // ⚠ LE CODE NE SE RETIENT PAS. Le poste dit ce que la tablette AFFICHE ; le code ouvre les
+  // commandes d'ecriture. Une copie de plus serait une copie a oublier quelque part.
+  vrai('mais il n est PAS range', !JSON.stringify(b.range()).includes('1234'), JSON.stringify(b.range()));
+}
+{
+  const b = bac('?poste=calendrier&code=12');       // trop court
+  vrai('un code mal forme ne passe pas', b.src().indexOf('code=') < 0, b.src());
+  vrai('et il n empeche pas le poste', /[?&]kiosque=calendrier\b/.test(b.src()), b.src());
+}
+{
+  const b = bac('?poste=calendrier&code=abcd');     // pas des chiffres
+  vrai('un code non numerique ne passe pas', b.src().indexOf('code=') < 0, b.src());
+}
+{
+  const b = bac('?poste=calendrier');
+  vrai('sans code, l adresse reste une adresse ordinaire', b.src().indexOf('code=') < 0, b.src());
+}
+
 console.log('\n-- 3. Le pont avec l app : jeton ET poste --');
 {
   const b = bac('');
