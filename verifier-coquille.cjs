@@ -57,7 +57,8 @@ vrai('le script de la coquille a été extrait', script.length > 1000, script.le
 // ── LE FAUX NAVIGATEUR ────────────────────────────────────────────────────────────────
 // Assez pour que le vrai script tourne : un DOM qui retient ce qu'on lui pose, un
 // localStorage qui garde, et une adresse qu'on choisit.
-function bac(recherche, rangement) {
+function bac(recherche, rangement, options) {
+  const o = options || {};
   const store = Object.assign({}, rangement || {});
   const iframe = { id: 'app', src: '', style: {}, addEventListener() {} };
   const splash = { style: {}, classList: { add() {}, remove() {} } };
@@ -66,10 +67,44 @@ function bac(recherche, rangement) {
   const envoyes = [];
   let ecouteur = null;
 
+  // ── LES NŒUDS DU PANNEAU DE DICTÉE ──
+  // Un vrai `classList` et un vrai `textContent` : c'est ce que le banc interroge pour savoir
+  // si le panneau s'est ouvert, s'il écoute, et ce qu'il affiche. Un stub qui avale tout
+  // laisserait passer un panneau qui ne s'ouvre jamais.
+  const clics = {};
+  function noeud(id) {
+    const cls = new Set();
+    return {
+      id: id, style: {}, textContent: '',
+      classList: { add: (c) => cls.add(c), remove: (c) => cls.delete(c),
+                   contains: (c) => cls.has(c), _set: cls },
+      addEventListener: (t, f) => { if (t === 'click') clics[id] = f; }
+    };
+  }
+  const dicNoeuds = {};
+  ['dictee', 'dicMicro', 'dicFini', 'dicTexte', 'dicTitre', 'dicSous']
+    .forEach((id) => { dicNoeuds[id] = noeud(id); });
+
+  // ── LA FAUSSE RECONNAISSANCE VOCALE ──
+  // `absente: true` rejoue un appareil sans Web Speech (le repli que l'app doit annoncer).
+  // `refuse: 'not-allowed'` rejoue un `start()` qui jette — le micro bloqué par l'appareil.
+  const recs = [];
+  function Reco() {
+    this.lang = ''; this.continuous = false; this.interimResults = false;
+    this.onresult = this.onstart = this.onerror = this.onend = null;
+    this.demarre = 0; this.arrete = 0; this.abandonne = 0;
+    recs.push(this);
+    const self = this;
+    this.start = function () { if (o.refuse) throw new Error(o.refuse); self.demarre++; if (self.onstart) self.onstart(); };
+    this.stop = function () { self.arrete++; if (self.onend) self.onend(); };
+    this.abort = function () { self.abandonne++; };
+  }
+
   const doc = {
     title: 'BPQ Planification',
     body: { appendChild() {} },
-    getElementById: (id) => (id === 'app' ? iframe : id === 'splash' ? splash : null),
+    getElementById: (id) => (id === 'app' ? iframe : id === 'splash' ? splash
+                             : (dicNoeuds[id] || null)),
     querySelector: (s) => metas[(s.match(/name="([^"]+)"/) || [])[1]] || null,
     createElement: () => ({ style: {}, setAttribute() {} })
   };
@@ -90,15 +125,34 @@ function bac(recherche, rangement) {
     setTimeout: () => 0,
     visualViewport: null
   };
+  if (!o.absente) win.webkitSpeechRecognition = Reco;
   win.window = win;
   vm.createContext(win);
   vm.runInContext(script, win);
+
+  // Le dernier résultat cumulatif, comme la vraie API le rend : `results` porte TOUT depuis le
+  // début de la dictée, et non le dernier morceau.
+  function resultats(morceaux) {
+    const r = morceaux.map((m) => { const x = [{ transcript: m }]; x.isFinal = true; return x; });
+    r.length = morceaux.length;
+    return { results: r };
+  }
 
   return {
     src: () => iframe.src,
     titre: () => doc.title,
     icone: () => metas['apple-mobile-web-app-title'].content,
     range: () => Object.assign({}, store),
+    // Le panneau de dictée, vu du dehors.
+    pan: (id) => dicNoeuds[id || 'dictee'],
+    ouvert: () => dicNoeuds.dictee.classList.contains('ouvert'),
+    ecoute: () => dicNoeuds.dictee.classList.contains('ecoute'),
+    taper: (id) => { if (clics[id]) clics[id](); },
+    reco: () => recs[recs.length - 1] || null,
+    recs: () => recs,
+    // Tout ce que la coquille a renvoyé à l'app depuis le dernier `dire()`.
+    renvois: () => envoyes.slice(),
+    entendre: (morceaux) => { const r = recs[recs.length - 1]; if (r && r.onresult) r.onresult(resultats(morceaux)); },
     // Un message venu du bac à sable Apps Script, comme l'app en envoie.
     dire: (data) => {
       envoyes.length = 0;
@@ -222,6 +276,130 @@ console.log('\n-- 3. Le pont avec l app : jeton ET poste --');
   vrai('le pont ne répond qu à une origine Google',
        /origineGoogle\(e\.origin\)/.test(script), 'le filtre d origine a disparu du script');
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════════════
+// 3 bis. LA DICTÉE — la troisième fois que cette moitié-ci arrive en retard
+// ═══════════════════════════════════════════════════════════════════════════════════════
+//
+// Signalé par Samuel le 2026-10-28 : « Il y a un bouton dicté […] En ce moment, le bouton ne
+// marche pas. » L'app envoyait { bpq: 'dicter' } depuis la veille ; cette page ne connaissait
+// pas le message, personne ne répondait, et l'app annonçait au bout de 2,5 s que la dictée
+// n'était pas disponible. Le banc était vert des deux côtés : aucun des deux ne regardait le
+// pont ENTRE les deux dépôts.
+//
+// Ce § exécute le vrai script sur le vrai protocole. Il tient aussi les trois pièges qui ont
+// coûté du temps à l'écrire : l'accusé AVANT le micro, le texte CUMULATIF, et `onend` qui
+// tombe aussi après une erreur.
+console.log('\n-- 3 bis. La dictee : le pont que l app parle depuis le 2026-10-27 --');
+{
+  const b = bac('?poste=inspection');
+  vrai('l app demande, la coquille ACCUSE RÉCEPTION',
+       JSON.stringify(b.dire({ bpq: 'dicter', lang: 'fr-CA' })) === '{"bpq":"dictee-ouverte"}',
+       JSON.stringify(b.renvois()));
+  // ⚠ L'ACCUSÉ NE DIT PAS « j'écoute ». Il dit « je connais ce message ». La permission du
+  // micro peut demander un toucher sur « Autoriser », bien plus long que les 2,5 s que l'app
+  // attend : lier l'accusé au démarrage réel ferait échouer la PREMIÈRE dictée de chaque
+  // tablette — celle qu'on installe en espérant que ça marche.
+  vrai('et elle le fait AVANT d ouvrir le micro', b.reco() === null);
+  vrai('le panneau s ouvre, et il n écoute pas encore', b.ouvert() && !b.ecoute());
+
+  // LE TOUCHER DANS CE DOCUMENT. C'est toute la raison d'être du panneau : Safari refuse
+  // `start()` sans activation de l'utilisateur sur la page qui demande le micro, et le
+  // toucher de l'app a eu lieu dans l'iframe.
+  b.taper('dicMicro');
+  vrai('toucher le micro DU PANNEAU ouvre la reconnaissance',
+       !!b.reco() && b.reco().demarre === 1);
+  vrai('dans la langue demandée', b.reco().lang === 'fr-CA', b.reco().lang);
+  vrai('et le panneau le montre', b.ecoute());
+
+  // ⚠ LE TEXTE EST CUMULATIF. `results` porte tout depuis le début ; renvoyer un morceau
+  // écrirait « Le mur Le mur est fissuré » dans la fiche, parce que l'app REMPLACE à chaque
+  // message (base + texte) au lieu d'ajouter.
+  b.dire({ bpq: 'rien' });                       // vide la boîte des renvois
+  b.entendre(['Le mur ', 'est fissuré']);
+  vrai('le texte renvoyé est le texte COMPLET',
+       JSON.stringify(b.renvois()) === '[{"bpq":"dictee-texte","texte":"Le mur est fissuré"}]',
+       JSON.stringify(b.renvois()));
+  vrai('et le panneau affiche ce qu il a entendu',
+       b.pan('dicTexte').textContent === 'Le mur est fissuré', b.pan('dicTexte').textContent);
+
+  b.dire({ bpq: 'rien' });
+  b.taper('dicFini');
+  vrai('« Terminé » arrête la reconnaissance et envoie la fin',
+       JSON.stringify(b.renvois()) === '[{"bpq":"dictee-fin","texte":"Le mur est fissuré"}]',
+       JSON.stringify(b.renvois()));
+  vrai('et le panneau se referme', !b.ouvert() && !b.ecoute());
+}
+{
+  // L'app peut arrêter la dictée de son côté (on quitte la fiche : `ncKFermer`).
+  const b = bac('?poste=inspection');
+  b.dire({ bpq: 'dicter', lang: 'fr-CA' });
+  b.taper('dicMicro');
+  b.entendre(['essai']);
+  b.dire({ bpq: 'rien' });
+  b.dire({ bpq: 'dicter-stop' });
+  vrai('dicter-stop ferme aussi la dictée', !b.ouvert());
+  vrai('et l app reçoit sa fin', JSON.stringify(b.renvois()) === '[{"bpq":"dictee-fin","texte":"essai"}]',
+       JSON.stringify(b.renvois()));
+}
+{
+  // ⚠ `onend` TOMBE AUSSI APRÈS UNE ERREUR. Une fin vide envoyée derrière l'erreur remettrait
+  // le bouton de l'app au repos en effaçant son message d'explication — l'allure exacte d'un
+  // bouton cassé. Deux gardes s'y opposent dans la coquille (le drapeau `fini`, et la
+  // fermeture qui vide `dictee`) et CHACUNE suffit : éprouvé en les retirant une à une, ce
+  // contrôle ne crie que si les deux tombent. Il tient donc la PAIRE, pas l'une d'elles.
+  const b = bac('?poste=inspection');
+  b.dire({ bpq: 'dicter', lang: 'fr-CA' });
+  b.taper('dicMicro');
+  b.dire({ bpq: 'rien' });
+  const r = b.reco();
+  r.onerror({ error: 'not-allowed' });
+  r.onend();
+  vrai('un micro refusé envoie l erreur, et RIEN après',
+       JSON.stringify(b.renvois()) === '[{"bpq":"dictee-erreur","erreur":"not-allowed"}]',
+       JSON.stringify(b.renvois()));
+  vrai('et le panneau ne reste pas ouvert par-dessus l app', !b.ouvert());
+}
+{
+  // `start()` qui jette : Safari le fait quand l'activation de l'utilisateur manque. On le dit
+  // à l'app comme un refus de micro — c'en est un, du point de vue de l'opérateur.
+  const b = bac('?poste=inspection', null, { refuse: 'not-allowed' });
+  b.dire({ bpq: 'dicter', lang: 'fr-CA' });
+  b.dire({ bpq: 'rien' });
+  b.taper('dicMicro');
+  vrai('un start() refusé est annoncé, pas avalé',
+       JSON.stringify(b.renvois()) === '[{"bpq":"dictee-erreur","erreur":"not-allowed"}]',
+       JSON.stringify(b.renvois()));
+}
+{
+  // UN APPAREIL SANS WEB SPEECH. L'app doit l'apprendre TOUT DE SUITE : son repli (le micro du
+  // clavier de l'iPad) marche partout, mais elle ne l'annonce que si on lui répond. Un silence
+  // ici, c'est le bouton mort qu'on vient de corriger.
+  const b = bac('?poste=inspection', null, { absente: true });
+  vrai('sans reconnaissance vocale, la coquille le DIT au lieu de se taire',
+       JSON.stringify(b.dire({ bpq: 'dicter', lang: 'fr-CA' })) === '{"bpq":"dictee-erreur","erreur":"non-supporte"}',
+       JSON.stringify(b.renvois()));
+  vrai('et elle n ouvre pas un panneau qu elle ne peut pas servir', !b.ouvert());
+}
+{
+  // Une langue venue du dehors ne se pose pas telle quelle — même règle que Montre.js.
+  const b = bac('?poste=inspection');
+  b.dire({ bpq: 'dicter', lang: 'fr-CA"><script>' });
+  b.taper('dicMicro');
+  vrai('une langue mal formée retombe sur celle de l usine', b.reco().lang === 'fr-CA', b.reco().lang);
+}
+{
+  // Le panneau recouvre l'app : il doit être mesuré comme le splash, sinon il se pose en haut
+  // de l'écran à la hauteur de son contenu.
+  const b = bac('?poste=inspection');
+  vrai('le panneau est mesuré comme le splash', b.pan('dictee').style.height === '1024px',
+       JSON.stringify(b.pan('dictee').style));
+}
+// ⚠ ET LA RÉPONSE NE PART QU'À LA FENÊTRE QUI A DEMANDÉ. Cette page est le document de
+// premier niveau : un postMessage vers '*' d'ici serait lisible par tout cadre de la page.
+vrai('la dictée répond à e.source sur e.origin, jamais en diffusion',
+     /dictee\.source\.postMessage\(msg, dictee\.origine\)/.test(script)
+     && !/postMessage\([^)]*,\s*['"]\*['"]\)/.test(script));
 
 console.log('\n-- 4. Le manifeste, et ce qu il peut casser --');
 vrai('le manifeste garde son fond et son thème noirs',
