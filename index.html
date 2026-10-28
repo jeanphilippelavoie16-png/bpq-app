@@ -54,6 +54,60 @@
     }
     #splash.hidden { opacity: 0; pointer-events: none; }
     #splash img { width: min(240px, 58vw); height: auto; }
+
+    /* ══ LA DICTÉE — pourquoi elle a besoin d'un écran À ELLE, ici ══
+       Le micro ne peut PAS s'ouvrir depuis l'app : la reconnaissance vocale exige que toute
+       la chaîne de cadres l'autorise, et l'iframe que HtmlService génère par-dessus la nôtre
+       ne relaie pas la permission — ce cadre-là appartient à Google. C'est la même raison qui
+       a fait passer le scan de code QR par ici.
+
+       Et il faut un TOUCHER DANS CE DOCUMENT : Safari refuse `recognition.start()` sans
+       activation de l'utilisateur sur la page qui demande le micro. Le toucher de l'app a eu
+       lieu dans l'iframe — il ne compte pas. D'où ce panneau : son gros bouton EST le geste
+       qui ouvre le micro, et il sert en même temps de témoin (« j'écoute », et ce que
+       j'entends) sur une tablette tenue avec des gants.
+
+       Couleurs : celles du thème sombre de l'app (bpq-planification, CLAUDE.md § charte) —
+       fond #0a0a0a, accent #0189FB, clair #7cc4ff, texte blanc à opacité variable. Rien de neuf. */
+    #dictee {
+      position: absolute; top: 0; left: 0; z-index: 5; background: #0a0a0a;
+      width: 100%;
+      display: none;
+      flex-direction: column; align-items: center; justify-content: center;
+      gap: 22px; padding: 24px; box-sizing: border-box;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: #fff; text-align: center;
+    }
+    #dictee.ouvert { display: flex; }
+    #dictee .dic-titre { font-size: 19px; font-weight: 600; letter-spacing: -0.2px; }
+    #dictee .dic-sous { font-size: 14px; color: rgba(255,255,255,0.55); max-width: 30ch; line-height: 1.45; }
+    /* 128px : bien au-delà des 88px du plus gros bouton des kiosques — c'est la seule cible
+       de cet écran, et elle se touche avec des gants sans regarder. */
+    #dictee .dic-micro {
+      width: 128px; height: 128px; border-radius: 50%;
+      border: 2px solid #0189FB; background: rgba(1,137,251,0.14);
+      color: #fff; display: flex; align-items: center; justify-content: center;
+      -webkit-tap-highlight-color: transparent;
+    }
+    #dictee .dic-micro:active { background: rgba(1,137,251,0.30); }
+    #dictee.ecoute .dic-micro { border-color: #7cc4ff; animation: dic-pouls 1.6s ease-in-out infinite; }
+    /* ⚠ Nom préfixé `dic-` : les @keyframes sont GLOBALES. Cette page ne partage son document
+       avec rien d'autre, mais la règle vaut quand même — elle coûte trois lettres. */
+    @keyframes dic-pouls {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(1,137,251,0.45); }
+      50%      { box-shadow: 0 0 0 18px rgba(1,137,251,0); }
+    }
+    #dictee .dic-texte {
+      font-size: 17px; line-height: 1.5; color: rgba(255,255,255,0.92);
+      max-width: 46ch; min-height: 3em; overflow-y: auto; max-height: 34vh;
+    }
+    #dictee .dic-fini {
+      min-height: 56px; padding: 0 30px; border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.22); background: rgba(255,255,255,0.08);
+      color: #fff; font-size: 17px; font-weight: 600;
+      -webkit-tap-highlight-color: transparent;
+    }
+    #dictee .dic-fini:active { background: rgba(255,255,255,0.16); }
   </style>
 </head>
 <body>
@@ -91,6 +145,25 @@
           title="BPQ Planification"
           allow="camera; microphone; clipboard-read; clipboard-write; geolocation; fullscreen"
           allowfullscreen></iframe>
+
+  <!-- ── LE PANNEAU DE DICTÉE ──
+       Caché tant que l'app ne le demande pas (message { bpq: 'dicter' }). Il vit ICI et pas
+       dans l'app parce que le micro n'existe qu'au premier niveau — voir le bloc CSS #dictee.
+       L'icône est « mic » de Lucide, le même tracé que le bouton de l'app (NC_ICO_MICRO dans
+       bpq-planification, ui/Js-28) : le même dessin de part et d'autre du pont. -->
+  <div id="dictee" role="dialog" aria-modal="true" aria-label="Dictée">
+    <div class="dic-titre" id="dicTitre">Toucher le micro et parler</div>
+    <button type="button" class="dic-micro" id="dicMicro" aria-label="Parler">
+      <svg viewBox="0 0 24 24" width="56" height="56" fill="none" stroke="currentColor"
+           stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M12 19v3"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+        <rect x="9" y="2" width="6" height="13" rx="3"/>
+      </svg>
+    </button>
+    <div class="dic-texte" id="dicTexte"></div>
+    <div class="dic-sous" id="dicSous">Ce que tu dis s’écrit dans la fiche. Tu pourras le corriger.</div>
+    <button type="button" class="dic-fini" id="dicFini">Terminé</button>
+  </div>
 
   <script>
     (function () {
@@ -196,6 +269,12 @@
         if (!h) return;
         app.style.height = h + 'px';
         splash.style.height = h + 'px';
+        // Le panneau de dictée se mesure comme le splash : lui aussi recouvre l'app. ⚠ On le
+        // relit ici plutôt que de garder la variable du bloc plus bas — `fit()` tourne AVANT
+        // lui au premier passage, et une variable encore vide aurait laissé le panneau haut de
+        // son contenu, posé en haut de l'écran.
+        var pan = document.getElementById('dictee');
+        if (pan) pan.style.height = h + 'px';
         if (diag) {
           diag.textContent = (seul ? 'STANDALONE' : 'navigateur')
             + ' · inner ' + ih + ' · visual ' + Math.round(vv)
@@ -263,6 +342,160 @@
       // lui renvoie, et l'inverse aussi.
       function pageGet() { try { return localStorage.getItem(PAGE_KEY) || ''; } catch (e) { return ''; } }
 
+      // ═══════════════════════════════════════════════════════════════════════════════════
+      // LA DICTÉE — la moitié que ce dépôt n'avait jamais reçue
+      // ═══════════════════════════════════════════════════════════════════════════════════
+      //
+      // Signalé par Samuel le 2026-10-28 : « Sur la tablette inspection, il y a maintenant une
+      // pastille à cliquer NC […] Il y a un bouton dicté […] En ce moment, le bouton ne marche
+      // pas. » Il ne marchait pas parce que CETTE page ne connaissait pas le message : l'app
+      // envoyait { bpq: 'dicter' } depuis le 2026-10-27, personne ne répondait, et au bout de
+      // 2,5 s l'app disait « la dictée n'est pas disponible ici ». Elle avait raison.
+      //
+      // ⛔ C'EST LA TROISIÈME FOIS que cette moitié-ci arrive en retard, et le mode de panne
+      // est chaque fois le même : l'app envoie un champ ou un message de plus, cette page
+      // l'ignore en silence, et c'est l'usine qui le découvre.
+      //   · 2026-08-21 — l'iframe restée sur l'ancien déploiement (quatre jours) ;
+      //   · 2026-09-17→21 — le poste qui ne voyageait pas (quatre jours) ;
+      //   · 2026-10-27→28 — la dictée, ci-dessous.
+      // Depuis ce lot, l'autre dépôt tient la liste des messages qu'il nous envoie et refuse
+      // le push pour un message neuf qui n'est pas déclaré ici (voir son
+      // hooks/coquille-messages.json). Ça ne publie pas cette page à notre place — ça fait
+      // au moins DIRE qu'elle est à publier.
+      //
+      // LE PROTOCOLE, tel que l'app le parle déjà (bpq-planification, ui/Js-28) :
+      //   app  → nous : { bpq: 'dicter', lang }     { bpq: 'dicter-stop' }
+      //   nous → app  : { bpq: 'dictee-ouverte' }   l'accusé : « je connais ce message »
+      //                 { bpq: 'dictee-texte', texte }   le texte COMPLET, pas un morceau
+      //                 { bpq: 'dictee-fin', texte }     le texte complet, et c'est fini
+      //                 { bpq: 'dictee-erreur', erreur }
+      //
+      // ⚠ L'ACCUSÉ PART AVANT LE MICRO, et c'est voulu. Il ne dit pas « j'écoute » : il dit
+      // « je suis une coquille qui sait dicter ». La permission du micro, elle, peut demander
+      // à l'opérateur de toucher « Autoriser » — bien plus que les 2,5 s que l'app attend.
+      // Lier l'accusé au démarrage réel du micro ferait échouer la PREMIÈRE dictée de chaque
+      // tablette, celle qui demande la permission, c'est-à-dire exactement celle qu'on
+      // installe en espérant que ça marche.
+      var Reco = window.SpeechRecognition || window.webkitSpeechRecognition;
+      var dictee = null;            // { rec, source, origine, texte, fini } pendant une dictée
+      var DIC_MAX = 3000;           // la zone de texte de la fiche en accepte 4000, base comprise
+      var dicPan   = document.getElementById('dictee');
+      var dicMicro = document.getElementById('dicMicro');
+      var dicFini  = document.getElementById('dicFini');
+      var dicTexte = document.getElementById('dicTexte');
+      var dicTitre = document.getElementById('dicTitre');
+      var dicSous  = document.getElementById('dicSous');
+
+      // On ne répond qu'à la fenêtre qui a demandé, sur SON origine — jamais en diffusion.
+      // Même règle que `kiosk-get` : un postMessage vers '*' depuis le premier niveau serait
+      // lisible par n'importe quel cadre de la page.
+      function dicDire(msg) {
+        if (!dictee) return;
+        try { dictee.source.postMessage(msg, dictee.origine); } catch (e) {}
+      }
+
+      function dicFermer() {
+        dicPan.classList.remove('ouvert');
+        dicPan.classList.remove('ecoute');
+        dictee = null;
+      }
+
+      // ⚠ UNE LANGUE VENUE DU DEHORS NE SE POSE PAS TELLE QUELLE. Le message vient d'une
+      // origine Google, donc de notre app — mais tout ce qui traverse le pont est borné, ici
+      // comme dans Montre.js. `fr-CA` est le repli, c'est la langue de l'usine.
+      function dicLangue(v) {
+        return /^[a-z]{2}(-[A-Za-z]{2})?$/.test(String(v || '')) ? String(v) : 'fr-CA';
+      }
+
+      function dicOuvrir(e) {
+        // Pas de reconnaissance vocale sur cet appareil : on le DIT, tout de suite. L'app
+        // montre alors son message et met le curseur dans le champ — le micro du clavier de
+        // l'iPad reste là, et c'est un repli qui marche partout.
+        if (!Reco) {
+          try { e.source.postMessage({ bpq: 'dictee-erreur', erreur: 'non-supporte' }, e.origin); } catch (err) {}
+          return;
+        }
+        if (dictee) dicArreter(true);
+        dictee = { rec: null, source: e.source, origine: e.origin,
+                   lang: dicLangue(e.data.lang), texte: '', fini: false };
+        dicDire({ bpq: 'dictee-ouverte' });
+        dicTitre.textContent = 'Toucher le micro et parler';
+        dicSous.textContent = 'Ce que tu dis s’écrit dans la fiche. Tu pourras le corriger.';
+        dicTexte.textContent = '';
+        dicPan.classList.remove('ecoute');
+        dicPan.classList.add('ouvert');
+      }
+
+      // LE TOUCHER QUI OUVRE LE MICRO. Il doit avoir lieu DANS ce document : c'est toute la
+      // raison d'être du panneau (voir le bloc CSS #dictee).
+      function dicDemarrer() {
+        if (!dictee || dictee.rec) return;
+        var rec;
+        try { rec = new Reco(); } catch (e) { dicEchec('non-supporte'); return; }
+        rec.lang = dictee.lang;
+        // Les deux réglages sont ignorés par certaines versions de Safari, et ce n'est pas
+        // grave : sans `continuous`, la reconnaissance s'arrête d'elle-même après un silence,
+        // `onend` tombe, et la dictée se termine normalement.
+        try { rec.continuous = true; rec.interimResults = true; } catch (e) {}
+
+        rec.onresult = function (ev) {
+          // ⚠ `ev.results` est CUMULATIF depuis le début de la dictée : on le relit en entier
+          // et on renvoie le texte COMPLET. L'app remplace (base + texte) à chaque message —
+          // lui envoyer des morceaux écrirait « Le mur Le mur est Le mur est fissuré ».
+          var tout = '';
+          for (var i = 0; i < ev.results.length; i++) {
+            var r = ev.results[i];
+            tout += (r[0] && r[0].transcript) || '';
+          }
+          dictee.texte = tout.replace(/\s+/g, ' ').trim().slice(0, DIC_MAX);
+          dicTexte.textContent = dictee.texte;
+          dicDire({ bpq: 'dictee-texte', texte: dictee.texte });
+        };
+        rec.onstart = function () {
+          if (!dictee) return;
+          dicPan.classList.add('ecoute');
+          dicTitre.textContent = 'J’écoute…';
+          dicSous.textContent = 'Touche « Terminé » quand tu as fini.';
+        };
+        rec.onerror = function (ev) { dicEchec(String((ev && ev.error) || 'erreur')); };
+        rec.onend = function () {
+          // ⚠ `onend` TOMBE AUSSI APRÈS UNE ERREUR, et une fin vide envoyée derrière l'erreur
+          // remettrait le bouton de l'app au repos en effaçant son message d'explication —
+          // soit exactement l'allure d'un bouton cassé. Deux gardes s'y opposent, et CHACUNE
+          // suffit : `dicEchec` pose `fini`, et sa fermeture vide `dictee`. Mesuré en les
+          // retirant une à une — le banc ne crie que si les deux tombent. C'est voulu : la
+          // fermeture est là pour l'écran, le drapeau pour le protocole, et aucun des deux
+          // n'est à garder « parce que l'autre pourrait partir ».
+          if (!dictee || dictee.fini) { dicFermer(); return; }
+          dictee.fini = true;
+          dicDire({ bpq: 'dictee-fin', texte: dictee.texte });
+          dicFermer();
+        };
+        dictee.rec = rec;
+        try { rec.start(); } catch (e) { dicEchec('not-allowed'); }
+      }
+
+      function dicEchec(quoi) {
+        if (!dictee || dictee.fini) return;
+        dictee.fini = true;
+        dicDire({ bpq: 'dictee-erreur', erreur: quoi });
+        dicFermer();
+      }
+
+      // `muet` : on referme sans rien dire à l'app — le seul cas est une deuxième demande de
+      // dictée qui remplace la première, et l'app n'a pas à recevoir la fin de celle-là.
+      function dicArreter(muet) {
+        if (!dictee) return;
+        if (muet) dictee.fini = true;
+        var rec = dictee.rec;
+        if (!rec) { if (muet) { dicFermer(); return; } dicEchec('no-speech'); return; }
+        try { muet ? rec.abort() : rec.stop(); } catch (e) {}
+        if (muet) dicFermer();
+      }
+
+      dicMicro.addEventListener('click', dicDemarrer);
+      dicFini.addEventListener('click', function () { dicArreter(false); });
+
       addEventListener('message', function (e) {
         if (!origineGoogle(e.origin)) return;
         if (!e.data) return;
@@ -291,6 +524,8 @@
           try { localStorage.removeItem(PAGE_KEY); } catch (err) {}
           return;
         }
+        if (e.data.bpq === 'dicter') { dicOuvrir(e); return; }
+        if (e.data.bpq === 'dicter-stop') { dicArreter(false); return; }
         if (e.data.bpq === 'kiosk-get') {
           // Réponse à la fenêtre qui a demandé, sur SON origine — jamais en diffusion.
           // `page` s'ajoute au jeton : une app d'avant ce lot ignore le champ en trop, et
